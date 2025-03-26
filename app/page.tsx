@@ -1,22 +1,40 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
-import { useRef, useState } from 'react';
-import SimplePeer from 'simple-peer';
-import io from 'socket.io-client';
+import ControlPanel from '@/components/ControlPanel';
+import VideoDisplay from '@/components/VideoDisplay';
+import { useRef, useState, MutableRefObject, useEffect } from 'react';
+import SimplePeer, { Instance } from 'simple-peer';
+import io, { Socket } from 'socket.io-client';
+import baseUrl from '@/config/baseUrl';
 
-const socket = io('https://simple-peer-server-93fa39be00c7.herokuapp.com');
+// const socket = io('https://simple-peer-server-93fa39be00c7.herokuapp.com');
+const socket: Socket = io(baseUrl);
 
 export default function Home() {
-	const videoRef = useRef<HTMLVideoElement>(null);
-	const [username, setUsername] = useState('');
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const [isHost, setIsHost] = useState(false);
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const [peer, setPeer] = useState<SimplePeer.Instance | null>(null);
-	const [audioPeer, setAudioPeer] = useState<SimplePeer.Instance | null>(null);
-	const [connected, setConnected] = useState(false);
-	const [micEnabled, setMicEnabled] = useState(false);
+	const videoRef: MutableRefObject<HTMLVideoElement | null> = useRef(null);
+	const [username, setUsername] = useState<string>('');
+	const [isHost, setIsHost] = useState<boolean>(false);
+	const [peer, setPeer] = useState<Instance | null>(null);
+	const [audioPeer, setAudioPeer] = useState<Instance | null>(null);
+	const [connected, setConnected] = useState<boolean>(false);
+	const [micEnabled, setMicEnabled] = useState<boolean>(false);
 	const [micList, setMicList] = useState<string[]>([]);
+	const [messages, setMessages] = useState<string[]>([]);
+	const [messageInput, setMessageInput] = useState<string>('');
+	const [audienceList, setAudienceList] = useState<
+		Array<{ id: string; username: string }>
+	>([]);
+
+	useEffect(() => {
+		socket.on('receive-message', ({ username, message }) => {
+			setMessages((prev) => [...prev, `${username}: ${message}`]);
+		});
+
+		socket.on('audience-list', (list) => {
+			setAudienceList(list);
+		});
+	}, []);
 
 	const handleHost = async () => {
 		setIsHost(true);
@@ -46,7 +64,7 @@ export default function Home() {
 		});
 
 		socket.on('audience-mic-on', ({ username }) => {
-			setMicList((prev) => [...prev, `🎙️ ${username} enabled mic`]);
+			setMicList((prev) => [...prev, `️ ${username} enabled mic`]);
 		});
 	};
 
@@ -109,36 +127,62 @@ export default function Home() {
 		}
 	};
 
+	const sendMessage = () => {
+		if (messageInput) {
+			socket.emit('send-message', { username, message: messageInput });
+			setMessageInput('');
+		}
+	};
+
 	return (
-		<main style={{ textAlign: 'center', fontFamily: 'sans-serif' }}>
-			<h2>🎥 WebRTC Stream with Mic Toggle (Next.js 14)</h2>
-			<video
-				ref={videoRef}
-				autoPlay
-				playsInline
-				style={{ width: 600, border: '2px solid black', marginBottom: '1rem' }}
-			></video>
-
-			<div>
+		<main className='flex flex-col items-center justify-center min-h-screen py-2 bg-gray-100 px-4'>
+			<h2 className='text-3xl font-bold mb-4'>🎥 WebRTC Stream </h2>
+			<VideoDisplay videoRef={videoRef} />
+			<ControlPanel
+				username={username}
+				setUsername={setUsername}
+				handleHost={handleHost}
+				handleAudience={handleAudience}
+				connected={connected}
+				toggleMic={toggleMic}
+				micEnabled={micEnabled}
+				micList={micList}
+			/>
+			<div className='flex w-full max-w-md mt-4'>
 				<input
-					value={username}
-					onChange={(e) => setUsername(e.target.value)}
-					placeholder='Your name'
+					value={messageInput}
+					onChange={(e) => setMessageInput(e.target.value)}
+					placeholder='Type a message'
+					className='flex-grow p-2 border rounded-l-md'
 				/>
-				<button onClick={handleHost}>Start as Host</button>
-				<button onClick={handleAudience}>Join as Audience</button>
-				{connected && (
-					<button onClick={toggleMic}>
-						{micEnabled ? '❌ Disable Mic' : '🎙️ Enable Mic'}
-					</button>
-				)}
+				<button
+					onClick={sendMessage}
+					className='p-2 bg-blue-500 text-white rounded-r-md'
+				>
+					Send
+				</button>
 			</div>
-
-			<div style={{ marginTop: '1rem' }}>
-				{micList.map((item, i) => (
-					<p key={i}>{item}</p>
+			<div className='w-full max-w-md mt-4'>
+				{messages.map((message, index) => (
+					<p key={index} className='mb-2 p-2 bg-white rounded-md shadow-sm'>
+						{message}
+					</p>
 				))}
 			</div>
+
+			{isHost && (
+				<div className='w-full max-w-md mt-4'>
+					<h3 className='text-lg font-bold mb-2'>Audience List</h3>
+					{audienceList.map((audience) => (
+						<p
+							key={audience.id}
+							className='mb-2 p-2 bg-white rounded-md shadow-sm'
+						>
+							{audience.username} ({audience.id})
+						</p>
+					))}
+				</div>
+			)}
 		</main>
 	);
 }
