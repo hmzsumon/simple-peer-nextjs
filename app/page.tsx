@@ -25,6 +25,7 @@ export default function Home() {
 	const [audienceList, setAudienceList] = useState<
 		Array<{ id: string; username: string }>
 	>([]);
+	const audioStreams = useRef<Map<string, MediaStream>>(new Map());
 
 	useEffect(() => {
 		socket.on('receive-message', ({ username, message }) => {
@@ -34,7 +35,39 @@ export default function Home() {
 		socket.on('audience-list', (list) => {
 			setAudienceList(list);
 		});
+
+		socket.on('audio-signal', ({ from, data }) => {
+			const audioP = new SimplePeer();
+
+			audioP.on('stream', (stream) => {
+				audioStreams.current.set(from, stream);
+				updateAudioDisplay();
+			});
+
+			audioP.on('signal', (signal) => {
+				socket.emit('audio-signal', {
+					to: from,
+					from: socket.id,
+					data: signal,
+				});
+			});
+
+			audioP.signal(data);
+		});
 	}, []);
+
+	const updateAudioDisplay = () => {
+		audienceList.forEach((audience) => {
+			if (audioStreams.current.has(audience.id)) {
+				const audio = document.getElementById(
+					`audio-${audience.id}`
+				) as HTMLAudioElement;
+				if (audio) {
+					audio.srcObject = audioStreams.current.get(audience.id) || null;
+				}
+			}
+		});
+	};
 
 	const handleHost = async () => {
 		setIsHost(true);
